@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="PaceHUD: a rally co-driver in a phone. Voice pacenotes and a windscreen HUD, GNSS only, offline on stage.">
+<link rel="icon" href="img/icone.png">
+<title>PaceHUD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: one 1040px column on stage asphalt; a chevron strip opens each part like a stage board, the yellow plate is the only accent. Single dark look by choice (the app itself is dark and the HUD is read on black). */
+:root{
+  color-scheme: dark;
+  --asphalt:#0B0C0E;      /* page ground */
+  --track:#15171B;        /* panels */
+  --zebra:#1D2025;        /* raised panel */
+  --line:#2A2E35;         /* hairlines */
+  --text:#F2F2EF;
+  --muted:#A3A8B0;
+  --plate:#FFC400;        /* the one accent: stage-board yellow */
+  --red:#FF6B61; --amber:#FFB340; --green:#32D74B;
+  --display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--asphalt);color:var(--text);font-family:var(--body);font-size:17px;line-height:1.6}
+.wrap{max-width:1040px;margin:0 auto;padding-inline:20px;padding-block:0 64px}
+.chev{height:14px;background:repeating-linear-gradient(-45deg,var(--plate) 0 12px,var(--asphalt) 12px 24px)}
+h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:.02em;line-height:1.05;text-wrap:balance;margin:0}
+h2{font-size:clamp(28px,4vw,40px);text-transform:uppercase}
+h3{font-size:21px;text-transform:uppercase;letter-spacing:.05em}
+p{margin:0;max-width:68ch}
+a{color:var(--plate);text-underline-offset:3px}
+a:focus-visible,button:focus-visible{outline:3px solid var(--plate);outline-offset:3px}
+.label{font-family:var(--display);font-weight:600;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:22px;padding-block:56px 8px}
+section > .head{display:flex;flex-direction:column;gap:10px}
+
+/* hero */
+.hero{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center;padding-block:44px 8px}
+.hero img{width:112px;height:112px;border-radius:26px;display:block}
+.hero h1{font-size:clamp(52px,9vw,88px);letter-spacing:.1em}
+.hero .tag{font-size:clamp(19px,2.4vw,23px);color:var(--text);max-width:40ch}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.chip{font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:.06em;text-transform:uppercase;border:1.5px solid var(--line);border-radius:6px;padding:4px 10px;color:var(--muted)}
+.chip b{color:var(--text);font-weight:600}
+
+/* HUD showcase */
+.hud{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+figure{margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+figure img{width:100%;max-width:100%;display:block;border-radius:10px;border:1px solid var(--line);background:#000}
+figcaption{font-size:14.5px;color:var(--muted)}
+figcaption b{color:var(--text);font-weight:600}
+
+/* steps: the order is the real workflow */
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;counter-reset:s}
+.steps li{counter-increment:s;background:var(--track);border:1px solid var(--line);border-radius:8px;padding:16px 16px 18px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.steps li::before{content:counter(s);width:32px;height:32px;border-radius:7px;background:var(--plate);color:var(--asphalt);font-family:var(--display);font-weight:700;font-size:19px;display:flex;align-items:center;justify-content:center}
+.steps p{font-size:15.5px;color:#D6D8DC}
+
+/* engine: label/value specs */
+.engine{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.engine > div{display:flex;flex-direction:column;gap:10px;min-width:0;border-top:2px solid var(--plate);padding-top:14px}
+.engine p{font-size:15.5px;color:#D6D8DC}
+dl{margin:4px 0 0;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:15px}
+dt{color:var(--muted)}
+dd{margin:0;font-variant-numeric:tabular-nums;font-weight:600}
+
+/* dragy block */
+.gnss{background:var(--track);border:1px solid var(--line);border-radius:10px;padding:28px;display:grid;grid-template-columns:1.1fr 1fr;gap:32px}
+.gnss > div{display:flex;flex-direction:column;gap:14px;min-width:0}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:15px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 10px 8px 0;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--display);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:13.5px;color:var(--muted)}
+td.bad{color:var(--amber)}
+ul.plain{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:15.5px;color:#D6D8DC}
+ul.plain b{color:var(--text)}
+
+.split{display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:start}
+.contact{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:baseline}
+.handle{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.04em;user-select:all}
+footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between}
+
+.lang{display:flex;justify-content:flex-end;gap:6px;padding-top:16px}
+.lang button{font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:.08em;text-transform:uppercase;background:transparent;color:var(--muted);border:1.5px solid var(--line);border-radius:6px;padding:6px 12px;min-height:40px;cursor:pointer}
+.lang button[aria-pressed="true"]{background:var(--plate);border-color:var(--plate);color:var(--asphalt)}
+.hero{padding-block:24px 8px}
+@media (max-width:820px){
+  .steps,.engine{grid-template-columns:1fr 1fr}
+  .gnss,.split{grid-template-columns:1fr}
+}
+@media (max-width:560px){
+  .hero{grid-template-columns:1fr;gap:16px}
+  .hero img{width:84px;height:84px;border-radius:20px}
+  .hud,.steps,.engine{grid-template-columns:1fr}
+  .gnss{padding:20px}
+}
+</style>
+</head>
+<body>
+
+
+<div class="chev" aria-hidden="true"></div>
+<main class="wrap">
+<nav class="lang" aria-label="Idioma / Language">
+  <button type="button" id="b-en" data-lang="en" aria-pressed="true">English</button>
+  <button type="button" id="b-pt" data-lang="pt" aria-pressed="false">Português</button>
+</nav>
+<div id="en" lang="en">
+
+<header class="hero">
+  <img src="img/icone.png" alt="PaceHUD icon: a black corner arrow on a yellow stage plate">
+  <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+    <h1>PACEHUD</h1>
+    <p class="tag">A rally co-driver in a phone. It calls the pacenotes out loud at the right moment and shows the next note on a head-up display reflected in the windscreen.</p>
+    <div class="chips" aria-label="Key facts">
+      <span class="chip"><b>Android</b> 10+</span>
+      <span class="chip"><b>GNSS</b> only</span>
+      <span class="chip"><b>Offline</b> on stage</span>
+      <span class="chip"><b>v1.0.1</b> · Oct 2026</span>
+    </div>
+  </div>
+</header>
+
+<section aria-labelledby="hud-h">
+  <div class="head">
+    <span class="label">On the windscreen</span>
+    <h2 id="hud-h">The next corner, where the driver is already looking</h2>
+    <p class="muted">The phone lies flat on the dashboard and the glass reflects the screen. Arrow and number use the pacenote grade scale (1 = slowest, 6 = nearly straight, flat), coloured by grade.</p>
+  </div>
+  <div class="hud">
+    <figure>
+      <img src="img/hud_aproximacao.jpg" alt="HUD approaching a corner: green arrow, grade 6, 29 metres to go and the note after it">
+      <figcaption><b>Approaching.</b> Grade 6 right in 29 m; below, what follows: 20 m, then left 5.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/hud_dentro_chamada.jpg" alt="HUD inside a corner: the current corner large, the next one smaller and darker beside it">
+      <figcaption><b>Inside the corner.</b> It stays large; the next corner appears smaller and darker, and takes over 3 s before it starts.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section aria-labelledby="use-h">
+  <div class="head">
+    <span class="label">How it is used</span>
+    <h2 id="use-h">From a recce drive to a timed run</h2>
+  </div>
+  <ol class="steps">
+    <li><h3>Record the recce</h3><p>Drive the road once at an easy pace. The phone logs GNSS, video with sound, and markers for hazards (speed bumps, potholes, crests).</p></li>
+    <li><h3>Generate the notes</h3><p>On the phone, without internet: corners are detected from the track, graded by radius, linked with "into", "and" or a distance, and suspicious ones are flagged.</p></li>
+    <li><h3>Edit</h3><p>On the phone or in the desktop editor with satellite map and the recce video in sync: start and end of each corner, grade, modifiers, lead time per corner.</p></li>
+    <li><h3>Train</h3><p>A virtual car drives the stage at a fixed speed or at the real speed of a previous run, with voice and HUD, while parked.</p></li>
+    <li><h3>Run</h3><p>The launch control checks GNSS, voice, battery and temperature. The HUD opens on the windscreen or in a phone holder, and starts by itself at the start line.</p></li>
+    <li><h3>Analyse</h3><p>Each run keeps its time, speed along the stage and every call. Compare runs, see the live delta on the HUD, and tune lead times where a call came early or late.</p></li>
+  </ol>
+</section>
+
+<section aria-labelledby="eng-h">
+  <div class="head">
+    <span class="label">Under the hood</span>
+    <h2 id="eng-h">Everything is positioned by distance along the stage</h2>
+    <p class="muted">The stage is a polyline in a local metric plane. Each GNSS fix is matched to it, and every note, call and HUD frame is placed by <i>s</i>, the metres from the start.</p>
+  </div>
+  <div class="engine">
+    <div>
+      <h3>Tracker</h3>
+      <p>Matches each fix to the route inside a moving window, rejects off-route readings with hysteresis, and estimates position between fixes from Doppler speed.</p>
+      <dl><dt>Output</dt><dd>ŝ and v at 20 Hz</dd><dt>Off route</dt><dd>&gt; 40 m, 3 fixes</dd></dl>
+    </div>
+    <div>
+      <h3>Call scheduler</h3>
+      <p>Starts each phrase a set time before the corner, predicting arrival from the speed profile of a previous run of the same stage, scaled to the current speed.</p>
+      <dl><dt>Lead time</dt><dd>4.0 s (per corner)</dd><dt>Chain horizon</dt><dd>3 s</dd><dt>Voice latency</dt><dd>0.07–0.26 s</dd></dl>
+    </div>
+    <div>
+      <h3>HUD</h3>
+      <p>Fixed zones on an 800 × 360 canvas, nothing overlaps; mirrored for the reflection; night brightness from the sun's elevation at the stage.</p>
+      <dl><dt>Refresh</dt><dd>20 Hz</dd><dt>Orientation</dt><dd>fixed landscape</dd></dl>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="gnss-h">
+  <div class="head">
+    <span class="label">Why an external GNSS receiver</span>
+    <h2 id="gnss-h">Integrating dragy as an optional position source</h2>
+    <p class="muted">The phone's own GNSS is the limit today. Road tests on 13 and 15 October 2026 (Galaxy S23 Ultra) show where it falls short.</p>
+  </div>
+  <div class="gnss">
+    <div>
+      <h3>Measured with the phone</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th scope="col">What</th><th scope="col">Phone GNSS</th></tr></thead>
+          <tbody>
+            <tr><td>Fix rate</td><td class="bad">1 Hz</td></tr>
+            <tr><td>Accuracy, cruising</td><td>3.8–4 m</td></tr>
+            <tr><td>Accuracy at a speed bump (4–14 km/h)</td><td class="bad">11 m, position jumps back</td></tr>
+            <tr><td>Fake corner at a speed bump</td><td class="bad">31° by position, 9° by Doppler heading</td></tr>
+            <tr><td>Call timing error, mean</td><td class="bad">1.3 s (up to 4.6 s)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="font-size:15px">At 60 km/h one fix is 17 m of road. Corners are detected and the HUD is timed from those sparse, noisy points.</p>
+    </div>
+    <div>
+      <h3>What dragy would give</h3>
+      <ul class="plain">
+        <li><b>10–25 fixes per second</b> instead of 1: corner shape from the real path, not from an interpolated one.</li>
+        <li><b>Doppler speed and heading</b> with their accuracy: braking and speed bumps no longer read as corners.</li>
+        <li><b>Fix quality</b> (satellites, accuracy) shown on the launch control before the start.</li>
+      </ul>
+      <h3 style="margin-top:6px">How the integration would work</h3>
+      <ul class="plain">
+        <li>A source choice on the recce and launch screens: phone GNSS or dragy. The phone stays as fallback if the link drops.</li>
+        <li>Only position, speed, heading, accuracy and time are read. Everything stays on the phone; no account, no upload.</li>
+        <li>Works offline during the stage, like the rest of the app.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="desk-h">
+  <div class="head">
+    <span class="label">Desktop editor</span>
+    <h2 id="desk-h">Fine-tuning with map and video</h2>
+  </div>
+  <div class="split">
+    <figure>
+      <img src="img/desktop.jpg" alt="PaceHUD Desktop: note list, satellite map with the recce video, call timeline and note inspector">
+      <figcaption><b>PaceHUD Desktop</b> for Linux and Windows: note list, satellite map with the recce video in sync, timeline of where each call starts, and the note inspector. Stages move between phone and computer over USB or Wi‑Fi.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/largada.jpg" alt="Launch control on the phone: checks and the two open buttons">
+      <figcaption><b>Launch control:</b> checks, then open on the windscreen or in a phone holder.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section aria-labelledby="who-h">
+  <div class="head">
+    <span class="label">Project</span>
+    <h2 id="who-h">Personal project, in active road testing</h2>
+    <p>PaceHUD is built and tested by one driver for personal use, on closed roads and on public roads at legal speeds. The app is Kotlin with Jetpack Compose; the desktop editor is Compose Multiplatform. Source is in a private GitHub repository; releases ship as an Android APK and desktop installers.</p>
+  </div>
+  <div class="contact">
+    <span class="label">GitHub</span>
+    <span class="handle">AlexJR1507</span>
+    <a href="https://github.com/AlexJR1507">github.com/AlexJR1507</a>
+  </div>
+</section>
+
+<footer>
+  <span>PaceHUD 1.0.1 · October 2026</span>
+  <span>Helps the driver; it never replaces attention.</span>
+</footer>
+</div>
+<div id="pt" lang="pt-BR" hidden>
+<header class="hero">
+  <img src="img/icone.png" alt="Ícone do PaceHUD: seta de curva preta sobre a placa amarela de especial">
+  <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+    <h1>PACEHUD</h1>
+    <p class="tag">Um navegador de rali no celular. Fala as notas do pacenote em voz na hora certa e mostra a próxima nota num HUD refletido no para-brisa.</p>
+    <div class="chips" aria-label="Dados principais">
+      <span class="chip"><b>Android</b> 10+</span>
+      <span class="chip"><b>Só</b> GNSS</span>
+      <span class="chip"><b>Sem internet</b> na especial</span>
+      <span class="chip"><b>v1.0.1</b> · out 2026</span>
+    </div>
+  </div>
+</header>
+
+<section aria-labelledby="hud-h-pt">
+  <div class="head">
+    <span class="label">No para-brisa</span>
+    <h2 id="hud-h-pt">A próxima curva onde o piloto já está olhando</h2>
+    <p class="muted">O celular fica deitado no painel e o vidro reflete a tela. A seta e o número seguem a escala de graus do pacenote (1 = a mais lenta, 6 = quase reta, flat), com a cor do grau.</p>
+  </div>
+  <div class="hud">
+    <figure>
+      <img src="img/hud_aproximacao.jpg" alt="HUD chegando numa curva: seta verde, grau 6, faltam 29 metros e a nota seguinte">
+      <figcaption><b>Chegando.</b> Direita 6 em 29 m; embaixo, o que vem depois: 20 m e esquerda 5.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/hud_dentro_chamada.jpg" alt="HUD dentro de uma curva: a curva atual grande, a seguinte menor e mais escura ao lado">
+      <figcaption><b>Dentro da curva.</b> Ela continua grande; a seguinte aparece menor e mais escura, e assume 3 s antes de começar.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section aria-labelledby="use-h-pt">
+  <div class="head">
+    <span class="label">Como se usa</span>
+    <h2 id="use-h-pt">Do reconhecimento à passada cronometrada</h2>
+  </div>
+  <ol class="steps">
+    <li><h3>Gravar o reconhecimento</h3><p>Percorra a estrada uma vez com calma. O celular grava o GNSS, vídeo com som e marcações de perigos (quebra-molas, buraco, crista).</p></li>
+    <li><h3>Gerar as notas</h3><p>No próprio celular, sem internet: acha as curvas no trajeto, dá o grau pelo raio, liga com "para", "e" ou a distância e marca as suspeitas para conferir.</p></li>
+    <li><h3>Editar</h3><p>No celular ou no editor do computador, com mapa de satélite e o vídeo do reconhecimento juntos: início e fim de cada curva, grau, modificadores, antecedência por curva.</p></li>
+    <li><h3>Treinar</h3><p>Um carro virtual percorre a especial numa velocidade fixa ou na velocidade real de uma passada anterior, com voz e HUD, com o carro parado.</p></li>
+    <li><h3>Correr</h3><p>O controle de largada confere GNSS, voz, bateria e temperatura. O HUD abre no para-brisa ou num suporte e larga sozinho na linha de largada.</p></li>
+    <li><h3>Analisar</h3><p>Cada passada guarda o tempo, a velocidade ao longo da especial e cada chamada. Compare passadas, veja o delta ao vivo no HUD e ajuste a antecedência onde a chamada veio cedo ou tarde.</p></li>
+  </ol>
+</section>
+
+<section aria-labelledby="eng-h-pt">
+  <div class="head">
+    <span class="label">Por dentro</span>
+    <h2 id="eng-h-pt">Tudo é posicionado pela distância ao longo da especial</h2>
+    <p class="muted">A especial é uma polilinha num plano métrico local. Cada fix do GNSS é encaixado nela, e cada nota, chamada e quadro do HUD fica numa posição <i>s</i>, os metros desde a largada.</p>
+  </div>
+  <div class="engine">
+    <div>
+      <h3>Rastreador</h3>
+      <p>Encaixa cada fix na rota dentro de uma janela móvel, descarta leituras fora da rota com histerese e estima a posição entre os fixes pela velocidade Doppler.</p>
+      <dl><dt>Saída</dt><dd>ŝ e v a 20 Hz</dd><dt>Fora da rota</dt><dd>&gt; 40 m, 3 fixes</dd></dl>
+    </div>
+    <div>
+      <h3>Agendador das chamadas</h3>
+      <p>Começa cada frase um tempo fixo antes da curva, prevendo a chegada pelo perfil de velocidade de uma passada anterior na mesma especial, na escala da velocidade atual.</p>
+      <dl><dt>Antecedência</dt><dd>4,0 s (por curva)</dd><dt>Horizonte da cadeia</dt><dd>3 s</dd><dt>Latência da voz</dt><dd>0,07–0,26 s</dd></dl>
+    </div>
+    <div>
+      <h3>HUD</h3>
+      <p>Zonas fixas num canvas de 800 × 360, nada se sobrepõe; espelhado para o reflexo; brilho noturno pela altura do sol no lugar da especial.</p>
+      <dl><dt>Atualização</dt><dd>20 Hz</dd><dt>Orientação</dt><dd>horizontal fixa</dd></dl>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="gnss-h-pt">
+  <div class="head">
+    <span class="label">Por que um receptor GNSS externo</span>
+    <h2 id="gnss-h-pt">dragy como fonte de posição opcional</h2>
+    <p class="muted">O GNSS do próprio celular é o limite hoje. Os testes na rua de 13 e 15 de outubro de 2026 (Galaxy S23 Ultra) mostram onde ele não basta.</p>
+  </div>
+  <div class="gnss">
+    <div>
+      <h3>Medido com o celular</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th scope="col">O quê</th><th scope="col">GNSS do celular</th></tr></thead>
+          <tbody>
+            <tr><td>Taxa de fixes</td><td class="bad">1 Hz</td></tr>
+            <tr><td>Precisão, rodando</td><td>3,8–4 m</td></tr>
+            <tr><td>Precisão no quebra-molas (4–14 km/h)</td><td class="bad">11 m, a posição volta para trás</td></tr>
+            <tr><td>Curva falsa no quebra-molas</td><td class="bad">31° pela posição, 9° pelo rumo Doppler</td></tr>
+            <tr><td>Erro médio da hora da chamada</td><td class="bad">1,3 s (até 4,6 s)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="font-size:15px">A 60 km/h, um fix são 17 m de estrada. As curvas são detectadas e o HUD é sincronizado a partir desses pontos esparsos e com ruído.</p>
+    </div>
+    <div>
+      <h3>O que o dragy daria</h3>
+      <ul class="plain">
+        <li><b>10 a 25 fixes por segundo</b> em vez de 1: a forma da curva pelo caminho real, não por um interpolado.</li>
+        <li><b>Velocidade e rumo Doppler</b> com a precisão de cada um: freada e quebra-molas deixam de parecer curva.</li>
+        <li><b>Qualidade do fix</b> (satélites, precisão) no controle de largada, antes da largada.</li>
+      </ul>
+      <h3 style="margin-top:6px">Como seria a integração</h3>
+      <ul class="plain">
+        <li>Uma escolha de fonte nas telas de reconhecimento e de largada: GNSS do celular ou dragy. O celular fica de reserva se a conexão cair.</li>
+        <li>Só posição, velocidade, rumo, precisão e hora são lidos. Tudo fica no celular; sem conta, sem envio.</li>
+        <li>Funciona sem internet durante a especial, como o resto do app.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="desk-h-pt">
+  <div class="head">
+    <span class="label">Editor no computador</span>
+    <h2 id="desk-h-pt">Ajuste fino com mapa e vídeo</h2>
+  </div>
+  <div class="split">
+    <figure>
+      <img src="img/desktop.jpg" alt="PaceHUD Desktop: lista de notas, mapa de satélite com o vídeo do reconhecimento, linha do tempo das chamadas e inspetor da nota">
+      <figcaption><b>PaceHUD Desktop</b> para Linux e Windows: lista de notas, mapa de satélite com o vídeo do reconhecimento junto, linha do tempo de onde cada chamada começa e o inspetor da nota. As especiais vão e voltam entre celular e computador por USB ou Wi‑Fi.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/largada.jpg" alt="Controle de largada no celular: conferências e os dois botões de abrir">
+      <figcaption><b>Controle de largada:</b> conferências e depois abrir no para-brisa ou num suporte.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section aria-labelledby="who-h-pt">
+  <div class="head">
+    <span class="label">Projeto</span>
+    <h2 id="who-h-pt">Projeto pessoal, em testes na rua</h2>
+    <p>O PaceHUD é feito e testado por um piloto para uso pessoal, em estradas fechadas e em vias públicas dentro da velocidade permitida. O app é Kotlin com Jetpack Compose; o editor do computador é Compose Multiplatform. O código fica num repositório privado no GitHub; as versões saem como APK para Android e instaladores para o computador.</p>
+  </div>
+  <div class="contact">
+    <span class="label">GitHub</span>
+    <span class="handle">AlexJR1507</span>
+    <a href="https://github.com/AlexJR1507">github.com/AlexJR1507</a>
+  </div>
+</section>
+
+<footer>
+  <span>PaceHUD 1.0.1 · outubro de 2026</span>
+  <span>Ajuda o piloto; nunca substitui a atenção.</span>
+</footer>
+</div>
+</main>
+<script>
+(function(){
+  function show(l){
+    document.getElementById('en').hidden = l !== 'en';
+    document.getElementById('pt').hidden = l !== 'pt';
+    document.getElementById('b-en').setAttribute('aria-pressed', l === 'en');
+    document.getElementById('b-pt').setAttribute('aria-pressed', l === 'pt');
+    document.documentElement.lang = l === 'pt' ? 'pt-BR' : 'en';
+  }
+  var h = (location.hash || '').slice(1);
+  var l = h === 'pt' || h === 'en' ? h : ((navigator.language || '').toLowerCase().indexOf('pt') === 0 ? 'pt' : 'en');
+  show(l);
+  document.querySelectorAll('.lang button').forEach(function(b){
+    b.addEventListener('click', function(){ show(b.dataset.lang); try { history.replaceState(null, '', '#' + b.dataset.lang); } catch (e) {} });
+  });
+})();
+</script>
+
+</body>
+</html>
